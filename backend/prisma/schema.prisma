@@ -1,0 +1,262 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  email     String?  @unique
+  passwordHash String
+  avatarUrl String?
+  isHost    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  quizzes   Quiz[]
+  rooms     Room[]
+  players   Player[]
+
+  @@map("users")
+}
+
+model Quiz {
+  id              String   @id @default(uuid())
+  title           String
+  description     String?
+  creatorId       String
+  creator         User     @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  isPublic        Boolean  @default(false)
+  coverImageUrl   String?
+  questionCount   Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  questions     Question[]
+  rooms         Room[]
+  gameSessions  GameSession[]
+
+  @@index([creatorId])
+  @@map("quizzes")
+}
+
+model Question {
+  id          String   @id @default(uuid())
+  quizId      String
+  quiz        Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  order       Int
+  type        QuestionType
+  text        String
+  imageUrl    String?
+  audioUrl    String?
+  videoUrl    String?
+  timeLimit   Int      @default(30)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  answers       QuestionAnswer[]
+  playerAnswers PlayerAnswer[]
+
+  @@index([quizId])
+  @@map("questions")
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  MULTIPLE_SELECT
+  TRUE_FALSE
+  TEXT
+  NUMBER
+  ORDERING
+  MATCHING
+  IMAGE_POINT
+  AREA_HIGHLIGHT
+  HOTSPOT
+  AUDIO
+  VIDEO
+}
+
+model QuestionAnswer {
+  id          String   @id @default(uuid())
+  questionId  String
+  question    Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  order       Int
+  text        String
+  isCorrect   Boolean
+  pointsValue Int      @default(1000)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([questionId])
+  @@map("question_answers")
+}
+
+model Room {
+  id        String   @id @default(uuid())
+  pin       String   @unique @db.VarChar(6)
+  qrCode    String?
+  quizId    String
+  quiz      Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  hostId    String
+  host      User     @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  status    RoomStatus @default(WAITING)
+  settings  RoomSettings?
+  maxPlayers Int      @default(100)
+  createdAt DateTime @default(now())
+  finishedAt DateTime?
+  updatedAt DateTime @updatedAt
+
+  players       Player[]
+  gameSessions  GameSession[]
+  gameEvents    GameEvent[]
+
+  @@index([hostId])
+  @@index([pin])
+  @@map("rooms")
+}
+
+enum RoomStatus {
+  WAITING
+  IN_PROGRESS
+  FINISHED
+}
+
+model RoomSettings {
+  roomId                           String   @id
+  room                             Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  timePerQuestion                  Int      @default(30)
+  showCorrectAnswer                Boolean  @default(true)
+  showLeaderboardAfterQuestion     Boolean  @default(true)
+  shuffleAnswers                   Boolean  @default(true)
+  shuffleQuestions                 Boolean  @default(false)
+  pointsForSpeed                   Boolean  @default(true)
+  enableEvents                     Boolean  @default(false)
+  enableMiniGames                  Boolean  @default(false)
+  createdAt                        DateTime @default(now())
+  updatedAt                        DateTime @updatedAt
+
+  @@map("room_settings")
+}
+
+model GameSession {
+  id                  String   @id @default(uuid())
+  roomId              String
+  room                Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  quizId              String
+  quiz                Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  currentQuestionIndex Int     @default(0)
+  status              GameStatus @default(NOT_STARTED)
+  startedAt           DateTime?
+  finishedAt          DateTime?
+  updatedAt           DateTime @updatedAt
+
+  playerAnswers PlayerAnswer[]
+  scores        Score[]
+  gameEvents    GameEvent[]
+
+  @@index([roomId])
+  @@map("game_sessions")
+}
+
+enum GameStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  FINISHED
+}
+
+model Player {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  roomId    String
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  username  String
+  avatarUrl String?
+  color     String?
+  totalScore Int     @default(0)
+  joinedAt  DateTime @default(now())
+  leftAt    DateTime?
+  updatedAt DateTime @updatedAt
+
+  playerAnswers PlayerAnswer[]
+  scores        Score[]
+
+  @@index([roomId])
+  @@map("players")
+}
+
+model PlayerAnswer {
+  id              String   @id @default(uuid())
+  gameSessionId   String
+  gameSession     GameSession @relation(fields: [gameSessionId], references: [id], onDelete: Cascade)
+  questionId      String
+  question        Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  playerId        String
+  player          Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  answerText      String?
+  answerValue     Float?
+  selectedOptions String?  @db.Text
+  coordinates     String?  @db.Text
+  area            String?  @db.Text
+  ordering        String?  @db.Text
+  matchingPairs   String?  @db.Text
+  isCorrect       Boolean?
+  pointsEarned    Int      @default(0)
+  answeredAt      DateTime @default(now())
+  responseTime    Int
+  updatedAt       DateTime @updatedAt
+
+  @@index([gameSessionId])
+  @@index([questionId])
+  @@index([playerId])
+  @@map("player_answers")
+}
+
+model Score {
+  id              String   @id @default(uuid())
+  gameSessionId   String
+  gameSession     GameSession @relation(fields: [gameSessionId], references: [id], onDelete: Cascade)
+  playerId        String
+  player          Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  questionNumber  Int
+  points          Int
+  accuracy        Float
+  speedBonus      Int?
+  eventBonus      Int?
+  recordedAt      DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([gameSessionId])
+  @@index([playerId])
+  @@map("scores")
+}
+
+model GameEvent {
+  id              String   @id @default(uuid())
+  gameSessionId   String
+  gameSession     GameSession @relation(fields: [gameSessionId], references: [id], onDelete: Cascade)
+  roomId          String
+  room            Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  eventType       EventType
+  triggeredAt     DateTime @default(now())
+  affectedPlayers String?  @db.Text
+  eventData       String?  @db.Text
+  updatedAt       DateTime @updatedAt
+
+  @@map("game_events")
+}
+
+enum EventType {
+  TREASURE_CHEST
+  BONUS_MULTIPLIER
+  PENALTY
+  DOUBLE_POINTS
+  FREEZE_TIME
+}
